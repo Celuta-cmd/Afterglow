@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Afterglow</AssemblyName>
+    <Version>1.4.0</Version>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>afterglow.ico</ApplicationIcon>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+  <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
+  <ItemGroup><Resource Include="afterglow.ico" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="obj\native\Afterglow.Composition.dll" LogicalName="Afterglow.Composition.dll" /></ItemGroup>
+  <Target Name="BuildComposition" BeforeTargets="PrepareForBuild" Inputs="$(MSBuildProjectDirectory)\Native\Composition.cpp;$(MSBuildProjectDirectory)\Native\build.ps1" Outputs="$(MSBuildProjectDirectory)\obj\native\Afterglow.Composition.dll">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\Native\build.ps1&quot; -OutputDirectory &quot;$(MSBuildProjectDirectory)\obj\native&quot;" />
+  </Target>
+</Project>
