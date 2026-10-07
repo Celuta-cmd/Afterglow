@@ -1,0 +1,14 @@
+Afterglow 1.4 - GPU desktop transitions
+October 7, 2026
+
+The Desktop executable and downloads are updated. Open the existing Afterglow shortcut. Your existing settings, pairing and original-wallpaper backup are retained.
+
+The desktop now uses Windows GPU composition to blend two original-resolution images. Windows animates opacity at compositor cadence, with a gentler two-second fade. Images are shared across monitors. Rapid skips continue from a GPU snapshot of the held blend. The final PNG encodes alongside the fade, reducing the initial wait.
+
+Click Test desktop fade to preview the actual desktop layer without skipping your music. The studio hides briefly, blends to a sample and back, then returns.
+
+The existing YouTube Music extension is unchanged at 1.1.0. No extension reinstall or re-pairing is needed. Follow the playing song must be enabled for automatic wallpaper changes.
+
+Verification: 40 integration/rendering checks, 10 extension checks and 15 native transition checks passed. The composed-desktop probe found zero color errors or backward jumps during concurrent 4K rendering. The test restored the wallpaper afterward. See VERIFICATION.md for measurements and their limits.
+
+A Direct3D 11 hardware graphics device and enabled Windows interface animations are required for GPU fades. If composition is unavailable, Afterglow applies the finished PNG directly.

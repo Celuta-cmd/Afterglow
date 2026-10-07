@@ -1,0 +1,14 @@
+.vs/
+**/bin/
+**/obj/
+portable/
+artifacts/
+test-results/
+*.pdb
+*.user
+*.suo
+*.log
+settings.json*
+live-track.json
+.env
+.env.*
