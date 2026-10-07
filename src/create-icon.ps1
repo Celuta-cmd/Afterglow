@@ -1,0 +1,20 @@
+Add-Type -AssemblyName System.Drawing
+$iconTarget = Join-Path $PSScriptRoot 'Afterglow\afterglow.ico'
+$bitmap = [System.Drawing.Bitmap]::new(256, 256)
+$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+$graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+$graphics.Clear([System.Drawing.Color]::Transparent)
+$pink = [System.Drawing.SolidBrush]::new([System.Drawing.Color]::FromArgb(255, 76, 100))
+$white = [System.Drawing.Pen]::new([System.Drawing.Color]::White, 12)
+$graphics.FillEllipse($pink, 8, 8, 240, 240)
+$graphics.DrawEllipse($white, 56, 56, 144, 144)
+$graphics.DrawEllipse($white, 98, 98, 60, 60)
+$png = [System.IO.MemoryStream]::new()
+$bitmap.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)
+$file = [System.IO.File]::Create($iconTarget)
+$writer = [System.IO.BinaryWriter]::new($file)
+$writer.Write([uint16]0); $writer.Write([uint16]1); $writer.Write([uint16]1)
+$writer.Write([byte]0); $writer.Write([byte]0); $writer.Write([byte]0); $writer.Write([byte]0)
+$writer.Write([uint16]1); $writer.Write([uint16]32); $writer.Write([uint32]$png.Length); $writer.Write([uint32]22)
+$writer.Write($png.ToArray())
+$writer.Dispose(); $png.Dispose(); $graphics.Dispose(); $bitmap.Dispose(); $pink.Dispose(); $white.Dispose()
