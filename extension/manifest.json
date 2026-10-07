@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Afterglow - YouTube Music bridge",
+  "version": "1.1.0",
+  "description": "Send the playing YouTube Music album artwork to your Afterglow Windows wallpaper app.",
+  "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1:47836/*"],
+  "background": {"service_worker": "background.js"},
+  "options_ui": {"page": "options.html", "open_in_tab": true},
+  "action": {"default_title": "Afterglow: click to pair with your Windows app"},
+  "content_scripts": [
+    {"matches": ["https://music.youtube.com/*"], "js": ["page.js"], "world": "MAIN", "run_at": "document_idle"},
+    {"matches": ["https://music.youtube.com/*"], "js": ["content.js"], "run_at": "document_idle"}
+  ]
+}
+
