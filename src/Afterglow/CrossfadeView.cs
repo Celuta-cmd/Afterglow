@@ -40,7 +40,7 @@ public sealed class CrossfadeView : Grid
         var frame=CurrentFrame();var version=++revision;
         completion?.TrySetResult();next.BeginAnimation(OpacityProperty,null);
         from=frame;target=image;previous.Source=frame;next.Source=image;
-        if(!animate||frame is null||!SystemParameters.ClientAreaAnimation)
+        if(!animate||frame is null||!SystemParameters.ClientAreaAnimation||SystemParameters.HighContrast)
         {next.Opacity=1;previous.Source=null;from=null;return;}
         next.Opacity=0;
         var finished=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);completion=finished;

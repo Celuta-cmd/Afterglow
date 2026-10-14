@@ -4,7 +4,12 @@
 portable/
 artifacts/
 test-results/
+.installer-tools/
+**/__pycache__/
 *.pdb
+*.wixpdb
+*.msi
+*.zip
 *.user
 *.suo
 *.log

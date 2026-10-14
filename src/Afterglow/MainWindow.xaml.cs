@@ -47,7 +47,7 @@ public partial class MainWindow : Window
         InfoCheck.IsChecked=settings.ShowInfo;AutoCheck.IsChecked=settings.AutoApply;WidgetCheck.IsChecked=settings.Widget;RestoreCheck.IsChecked=settings.RestoreOnExit;FadeCheck.IsChecked=settings.SmoothTransitions;
         StartupCheck.IsChecked=Desktop.StartWithWindows;
         ResolutionBox.SelectedIndex=settings.Resolution=="4K"?2:settings.Resolution=="1080p"?1:0;
-        ThemeBox.SelectedIndex=settings.Theme=="Dark"?1:0;
+        ThemeBox.SelectedIndex=settings.Theme=="Dark"?2:settings.Theme=="Light"?1:0;
         Width=Math.Min(settings.StudioWidth,SystemParameters.WorkArea.Width);Height=Math.Min(settings.StudioHeight,SystemParameters.WorkArea.Height);
         if(settings.StudioLeft is double left&&settings.StudioTop is double top&&IsOnScreen(left,top,Width,Height))
         {WindowStartupLocation=WindowStartupLocation.Manual;Left=left;Top=top;}
@@ -55,15 +55,15 @@ public partial class MainWindow : Window
         LocationChanged+=(_,_)=>QueuePlacement();SizeChanged+=(_,_)=>QueuePlacement();StateChanged+=(_,_)=>QueuePlacement();
         debounce.Tick+=(_,_)=>{debounce.Stop();SaveChoices();RenderPreview();if(Settings.AutoApply&&!AutomationMode&&Music.Connected&&!suspendWallpaper)_=ApplyWallpaperAsync();};
         connectionTimer.Tick+=(_,_)=>UpdateConnection();connectionTimer.Start();
-        Music.TrackChanged+=OnTrack;ready=true;RenderPreview();UpdateConnection();
+        InitializeLyrics();InitializeNavigation();Music.TrackChanged+=OnTrack;ready=true;RenderPreview();UpdateConnection();
         Loaded+=(_,_)=>{if(!AutomationMode){if(Settings.StudioMaximized)WindowState=WindowState.Maximized;if(Settings.Widget)ShowWidget();}};
-        Closing+=OnClosing;
+        Closing+=OnClosing;InitializeMotion();InitializeMaterials();MotionPolicy.SetEnabled(this,MotionAllowed);
     }
     private void OnTrack(Track incoming) => Dispatcher.InvokeAsync(()=>ReceiveTrackAsync(incoming));
     private async Task ReceiveTrackAsync(Track incoming)
     {
         if(Exiting)return;
-        track=incoming;UpdatePlayer();UpdateConnection();
+        lyricPlayback.Update(incoming,lyricClock.Elapsed.TotalSeconds);track=incoming;UpdatePlayer();UpdateConnection();_ = RefreshLyricsAsync();
         if(incoming.Artwork!=loadedArtwork)
         {
             if(pendingArtwork==incoming.Artwork||DateTime.UtcNow<artworkRetryAfter)return;
@@ -81,11 +81,11 @@ public partial class MainWindow : Window
             catch(Exception e){Status.Text="Could not load artwork: "+e.Message;artworkRetryAfter=DateTime.UtcNow.AddSeconds(10);return;}
             finally {if(pendingArtwork==incoming.Artwork)pendingArtwork="";}
         }
-        var key=track.Title+"|"+track.Artist+"|"+track.Artwork;
+        var key=track.Title+"|"+track.Artist+"|"+track.Album+"|"+Math.Round(track.Duration)+"|"+track.Artwork;
         if(key!=renderKey)
         {
             renderKey=key;RenderPreview();
-            if(Settings.AutoApply&&!AutomationMode&&!suspendWallpaper)await ApplyWallpaperAsync();
+            if((Settings.AutoApply||NeedsLyricsMigration())&&!AutomationMode&&!suspendWallpaper)await ApplyWallpaperAsync();
         }
     }
     private void RenderPreview()
@@ -96,10 +96,10 @@ public partial class MainWindow : Window
     {
         var version=++previewRevision;previewRequest?.Cancel();previewRequest?.Dispose();previewRequest=new();
         var cancellation=previewRequest.Token;var image=art;var song=track;var choices=Settings.Snapshot();
-        PreviewLabel.Text="PREVIEW · "+Settings.Preset.ToUpperInvariant();
+        PreviewLabel.Text=(loadedArtwork.Length==0?"Style preview · ":"")+Settings.Preset+" preview";
         UpdateSelection();
-        SizeSlider.IsEnabled=Settings.Preset is not ("Immersive" or "Backdrop");
-        InfoCheck.IsEnabled=Settings.Preset!="Backdrop";
+        SizeSlider.IsEnabled=Settings.ShowLyrics||Settings.Preset is not ("Immersive" or "Backdrop");
+        InfoCheck.IsEnabled=Settings.ShowLyrics||Settings.Preset!="Backdrop";
         BlurValue.Text=$"{Settings.Blur:0}%";DimValue.Text=$"{Settings.Darkness:0}%";SizeValue.Text=$"{Settings.CoverSize:0}%";
         UpdatePlayer();
         try
@@ -122,12 +122,12 @@ public partial class MainWindow : Window
         foreach(var button in new[]{AmbientButton,GalleryButton,ImmersiveButton,BackdropButton})
         {button.SetResourceReference(Button.BackgroundProperty,Settings.Preset==button.Tag.ToString()?"SelectionBrush":"SurfaceBrush");}
     }
-    private void SaveChoices(){if(AutomationMode)return;Settings.Save();SettingsSaved.Text="All changes saved on this PC";}
+    private void SaveChoices(){if(AutomationMode)return;Settings.Save();SettingsSaved.Text="Saved on this PC";}
     private void ScheduleRender(){if(!ready)return;SettingsSaved.Text="Saving changes…";debounce.Stop();debounce.Start();}
-    private void QueuePlacement(){if(!ready||AutomationMode||Exiting)return;placementTimer.Stop();placementTimer.Start();}
+    private void QueuePlacement(){if(!ready||AutomationMode||Exiting||windowMotion)return;placementTimer.Stop();placementTimer.Start();}
     private void RememberPlacement()
     {
-        if(AutomationMode)return;
+        if(AutomationMode||windowMotion)return;
         var bounds=WindowState==WindowState.Normal?new Rect(Left,Top,ActualWidth,ActualHeight):RestoreBounds;
         if(!bounds.IsEmpty&&double.IsFinite(bounds.Left)&&bounds.Width>=MinWidth)
         {Settings.StudioLeft=bounds.Left;Settings.StudioTop=bounds.Top;Settings.StudioWidth=bounds.Width;Settings.StudioHeight=bounds.Height;}
@@ -142,16 +142,16 @@ public partial class MainWindow : Window
         return false;
     }
     private void Theme_Changed(object sender,SelectionChangedEventArgs e)
-    {if(!ready)return;Settings.Theme=ThemeBox.SelectedIndex==1?"Dark":"Light";AppearanceTheme.Apply(Settings.Theme);UpdateSelection();SaveChoices();}
+    {if(!ready)return;Settings.Theme=ThemeBox.SelectedIndex==2?"Dark":ThemeBox.SelectedIndex==1?"Light":"System";AppearanceTheme.Apply(Settings.Theme);UpdateSelection();SaveChoices();}
     private void WindowClose_Click(object sender,RoutedEventArgs e)=>Close();
-    private void WindowMinimize_Click(object sender,RoutedEventArgs e)=>WindowState=WindowState.Minimized;
-    private void WindowMaximize_Click(object sender,RoutedEventArgs e)=>WindowState=WindowState==WindowState.Maximized?WindowState.Normal:WindowState.Maximized;
-    private void Appearance_Click(object sender,RoutedEventArgs e){SettingsScroll.ScrollToTop();ThemeBox.Focus();}
+    private async void WindowMinimize_Click(object sender,RoutedEventArgs e)=>await AnimateMinimizeAsync();
+    private async void WindowMaximize_Click(object sender,RoutedEventArgs e)=>await AnimateWindowSizeAsync();
+    private void Appearance_Click(object sender,RoutedEventArgs e){Navigate("Appearance");ThemeBox.Focus();}
     private void MiniPlayer_Click(object sender,RoutedEventArgs e)=>WidgetCheck.IsChecked=WidgetCheck.IsChecked!=true;
     private void Search_KeyDown(object sender,KeyEventArgs e)
     {if(e.Key!=Key.Enter||string.IsNullOrWhiteSpace(SearchBox.Text))return;Open("https://music.youtube.com/search?q="+Uri.EscapeDataString(SearchBox.Text.Trim()));e.Handled=true;}
     private void Appearance_Changed(object sender,RoutedPropertyChangedEventArgs<double> e)
-    {if(!ready)return;Settings.Blur=BlurSlider.Value;Settings.Darkness=DimSlider.Value;Settings.CoverSize=SizeSlider.Value;ScheduleRender();}
+    {if(!ready)return;Settings.Blur=BlurSlider.Value;Settings.Darkness=DimSlider.Value;Settings.CoverSize=SizeSlider.Value;BlurValue.Text=$"{Settings.Blur:0}%";DimValue.Text=$"{Settings.Darkness:0}%";SizeValue.Text=$"{Settings.CoverSize:0}%";ScheduleRender();}
     private void Options_Changed(object sender,RoutedEventArgs e)
     {
         if(!ready)return;Settings.ShowInfo=InfoCheck.IsChecked==true;Settings.AutoApply=AutoCheck.IsChecked==true;Settings.Widget=WidgetCheck.IsChecked==true;Settings.RestoreOnExit=RestoreCheck.IsChecked==true;
@@ -165,15 +165,18 @@ public partial class MainWindow : Window
     private void Resolution_Changed(object sender,SelectionChangedEventArgs e)
     {if(!ready)return;Settings.Resolution=(ResolutionBox.SelectedItem as ComboBoxItem)?.Content?.ToString()??"Display";ScheduleRender();}
     private void Preset_Click(object sender,RoutedEventArgs e){Settings.Preset=((Button)sender).Tag.ToString()!;ScheduleRender();}
-    private void Studio_Click(object sender,RoutedEventArgs e)=>Status.Text="Choose a style, adjust the atmosphere, then apply your wallpaper.";
+    private void Studio_Click(object sender,RoutedEventArgs e)=>Navigate("Studio");
     private void Music_Click(object sender,RoutedEventArgs e)=>Open("https://music.youtube.com/");
     internal static void Open(string path){Process.Start(new ProcessStartInfo(path){UseShellExecute=true});}
-    private void Connect_Click(object sender,RoutedEventArgs e)=>new ConnectWindow(Settings){Owner=this}.ShowDialog();
+    private void Connect_Click(object sender,RoutedEventArgs e)=>ShowSetupGuide();
+    internal void ShowSetupGuide(){Settings.SetupGuideSeen=true;SaveChoices();new ConnectWindow(Settings,Music){Owner=this}.ShowDialog();AutoCheck.IsChecked=Settings.AutoApply;}
     private void Player_Click(object sender,RoutedEventArgs e)=>SendCommand(((Button)sender).Tag.ToString()!);
     public void SendCommand(string action,double value=0)
     {Status.Text=Music.Send(action,value)?"Playback command sent to YouTube Music.":"Connect a playing YouTube Music tab to use the controls.";}
     private void Seek_Released(object sender,MouseButtonEventArgs e)
     {if(track.Duration>0)SendCommand("seek",ProgressSlider.Value*track.Duration);}
+    private void Seek_KeyUp(object sender,KeyEventArgs e)
+    {if(e.Key is Key.Left or Key.Right or Key.PageUp or Key.PageDown or Key.Home or Key.End){if(track.Duration>0)SendCommand("seek",ProgressSlider.Value*track.Duration);e.Handled=true;}}
     private void UpdateConnection()
     {
         if(desktopTransition is not null&&wallpaperFade is null&&!suspendWallpaper)
@@ -184,17 +187,17 @@ public partial class MainWindow : Window
             catch{desktopTransition?.Dispose();desktopTransition=null;}
         }
         bool connected=Music.Connected;SidebarStatus.Text=connected?(track.Playing?"Connected · playing":"Connected · paused"):"Waiting for connection";
-        ConnectionButton.Content=connected?"●  YouTube Music connected":"Connect YouTube Music";
+        ConnectionButton.Content=connected?"Connected":"Connect music";ConnectionNotice.Visibility=connected?Visibility.Collapsed:Visibility.Visible;HeroSection.Visibility=connected||loadedArtwork!=""?Visibility.Visible:Visibility.Collapsed;
         PreviousButton.IsEnabled=PlayButton.IsEnabled=NextButton.IsEnabled=connected;ProgressSlider.IsEnabled=connected&&track.Duration>0;
         widget?.SetConnected(connected);
     }
     private void UpdatePlayer()
     {
-        TrackTitle.Text=HeroTitle.Text=track.Title;TrackArtist.Text=HeroArtist.Text=track.Artist;HeroAlbum.Text=string.IsNullOrWhiteSpace(track.Album)?"YouTube Music":track.Album;
-        MiniArt.SetSource(art,Settings.SmoothTransitions&&!AutomationMode);HeroArt.SetSource(art,Settings.SmoothTransitions&&!AutomationMode);PlayButton.Content=track.Playing?"Ⅱ":"▶";
+        HeroStateLabel.Text=Music.Connected?"NOW PLAYING":"STYLE PREVIEW";TrackTitle.Text=HeroTitle.Text=track.Title;TrackArtist.Text=HeroArtist.Text=track.Artist;HeroAlbum.Text=string.IsNullOrWhiteSpace(track.Album)?"YouTube Music":track.Album;
+        MiniArt.SetSource(art,Settings.SmoothTransitions&&!AutomationMode);HeroArt.SetSource(art,Settings.SmoothTransitions&&!AutomationMode);PlayGlyph.Kind=track.Playing?"pause":"play";LyricsCover.SetSource(art,Settings.SmoothTransitions&&!AutomationMode);
         static string Time(double seconds)=>double.IsFinite(seconds)?$"{(int)Math.Max(0,seconds)/60}:{(int)Math.Max(0,seconds)%60:00}":"0:00";
         ElapsedTime.Text=Time(track.Position);TotalTime.Text=Time(track.Duration);
-        if(!ProgressSlider.IsMouseOver)ProgressSlider.Value=track.Duration>0?Math.Clamp(track.Position/track.Duration,0,1):0;
+        if(!ProgressSlider.IsMouseOver&&!ProgressSlider.IsKeyboardFocusWithin)ProgressSlider.Value=track.Duration>0?Math.Clamp(track.Position/track.Duration,0,1):0;
         widget?.Update(track,art);
     }
     private void ShowWidget()
@@ -224,8 +227,8 @@ public partial class MainWindow : Window
             cancellation.ThrowIfCancellationRequested();
             var path=Preferences.WallpaperPath;Directory.CreateDirectory(Preferences.WallpaperDirectory);
             bool owned;using(var desktop=new NativeWallpaper())owned=Settings.OwnsWallpaper&&Desktop.IsOwned(desktop,Settings);
-            if(!owned||!Settings.SmoothTransitions){desktopTransition?.Dispose();desktopTransition=null;}
-            if(Settings.SmoothTransitions&&owned&&desktopTransition is null)
+            if(!owned||!Settings.SmoothTransitions||!MotionAllowed){desktopTransition?.Dispose();desktopTransition=null;}
+            if(Settings.SmoothTransitions&&MotionAllowed&&owned&&desktopTransition is null)
             {
                 var oldPath=string.IsNullOrEmpty(Settings.AppliedWallpaper)?Desktop.CurrentWallpaper():Settings.AppliedWallpaper;
                 if(File.Exists(oldPath))
@@ -235,7 +238,7 @@ public partial class MainWindow : Window
                         var old=await RenderWorker.Wallpapers.Run(()=>LoadImage(oldPath),cancellation);
                         var epoch=desktopEpoch;var created=await DesktopTransition.TryCreateAsync(old);
                         if(epoch!=desktopEpoch){created?.Dispose();cancellation.ThrowIfCancellationRequested();return;}
-                        desktopTransition=created;
+                        desktopTransition=created;desktopLyrics?.KeepVisible();
                         cancellation.ThrowIfCancellationRequested();
                     }
                     catch(OperationCanceledException){throw;}
@@ -257,6 +260,7 @@ public partial class MainWindow : Window
             await encoding;
             cancellation.ThrowIfCancellationRequested();
             File.Move(staged,path,true);staged=null;Desktop.Apply(path,Settings);
+            ownsLyricLayout=choices.ShowLyrics;appliedLyricKey=LyricsProvider.Key(song);Settings.AppliedLyricsKey=choices.ShowLyrics?appliedLyricKey:"";Settings.Save();ownershipCheck=DateTime.MinValue;layerRetry=DateTime.MinValue;TickLyrics();
             Status.Text=$"Wallpaper applied · {width} × {height} · {Settings.Preset}";
             if(faded)
             {
@@ -266,7 +270,7 @@ public partial class MainWindow : Window
             }
             // Retain the completed surface between tracks. There is no
             // create/destroy handoff to Explorer on every song change.
-            if(Settings.SmoothTransitions&&owned&&!faded)
+            if(Settings.SmoothTransitions&&MotionAllowed&&owned&&!faded)
                 Status.Text+=" · Desktop fade unavailable; preview fade remains enabled.";
         }
         catch(OperationCanceledException){}
@@ -282,10 +286,11 @@ public partial class MainWindow : Window
         }
     }
     private void CancelDesktopTransition()
-    {desktopEpoch++;applyRevision++;wallpaperFade?.Cancel();desktopTransition?.Dispose();desktopTransition=null;}
+    {RemoveDesktopLyrics();desktopEpoch++;applyRevision++;wallpaperFade?.Cancel();desktopTransition?.Dispose();desktopTransition=null;}
     private async void TestFade_Click(object sender,RoutedEventArgs e)
     {
         if(AutomationMode||suspendWallpaper)return;
+        if(!MotionAllowed){Status.Text="Desktop animations are disabled in Windows.";return;}
         suspendWallpaper=true;CancelDesktopTransition();await wallpaperGate.WaitAsync();
         using var cancellation=new CancellationTokenSource();wallpaperFade=cancellation;DesktopTransition? demonstration=null;var wasVisible=IsVisible;
         try
@@ -311,7 +316,7 @@ public partial class MainWindow : Window
     private async void Apply_Click(object sender,RoutedEventArgs e)=>await ApplyWallpaperAsync();
     private async void Restore_Click(object sender,RoutedEventArgs e)
     {
-        AutoCheck.IsChecked=false;CancelDesktopTransition();await wallpaperGate.WaitAsync();
+        ownsLyricLayout=false;AutoCheck.IsChecked=false;CancelDesktopTransition();await wallpaperGate.WaitAsync();
         try{Status.Text="Automatic updates off. "+Desktop.Restore(Settings);}
         catch(Exception ex){Status.Text="Could not restore wallpaper: "+ex.Message;}
         finally {wallpaperGate.Release();}
@@ -330,7 +335,7 @@ public partial class MainWindow : Window
     public void ShowStudio(){Show();if(WindowState==WindowState.Minimized)WindowState=Settings.StudioMaximized?WindowState.Maximized:WindowState.Normal;Activate();}
     public async Task PrepareExitAsync()
     {
-        RememberPlacement();Exiting=true;suspendWallpaper=true;Music.TrackChanged-=OnTrack;artworkRequest?.Cancel();previewRequest?.Cancel();debounce.Stop();CancelDesktopTransition();placementTimer.Stop();
+        RememberPlacement();Exiting=true;StopLyrics();suspendWallpaper=true;Music.TrackChanged-=OnTrack;artworkRequest?.Cancel();previewRequest?.Cancel();debounce.Stop();CancelDesktopTransition();placementTimer.Stop();
         await wallpaperGate.WaitAsync();wallpaperGate.Release();
     }
 }

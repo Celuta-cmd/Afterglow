@@ -1,14 +1,20 @@
-Afterglow 1.4 - GPU desktop transitions
-October 7, 2026
+Afterglow 2.1.1
+Windows studio, synced lyrics and MSI setup
 
-The Desktop executable and downloads are updated. Open the existing Afterglow shortcut. Your existing settings, pairing and original-wallpaper backup are retained.
+Install Afterglow-2.1.1-x64.msi. Existing settings and pairing are preserved.
+New users get a browser setup guide. The extension still needs Developer mode
+and Load unpacked approval in Chrome or Edge.
 
-The desktop now uses Windows GPU composition to blend two original-resolution images. Windows animates opacity at compositor cadence, with a gentler two-second fade. Images are shared across monitors. Rapid skips continue from a GPU snapshot of the held blend. The final PNG encodes alongside the fade, reducing the initial wait.
+Enable synced lyrics in Lyrics to show them beside the cover on the desktop.
+Each phrase now retains its own visual while moving and changing emphasis.
+This avoids overlapping panel fades, brightness dips and duplicate glyphs.
+Seeking resumes from the displayed positions, and rapid advances do not extend
+departing phrases indefinitely. Small late playback reports do not bounce the
+lyrics backward. Long phrases wrap fully.
 
-Click Test desktop fade to preview the actual desktop layer without skipping your music. The studio hides briefly, blends to a sample and back, then returns.
+Wallpaper Studio offers Ambient, Gallery, Immersive and Backdrop. Appearance,
+Playback and Connection remember your choices. Song fades use Windows GPU
+composition; static PNG exports preserve full-resolution art and text.
 
-The existing YouTube Music extension is unchanged at 1.1.0. No extension reinstall or re-pairing is needed. Follow the playing song must be enabled for automatic wallpaper changes.
-
-Verification: 40 integration/rendering checks, 10 extension checks and 15 native transition checks passed. The composed-desktop probe found zero color errors or backward jumps during concurrent 4K rendering. The test restored the wallpaper afterward. See VERIFICATION.md for measurements and their limits.
-
-A Direct3D 11 hardware graphics device and enabled Windows interface animations are required for GPU fades. If composition is unavailable, Afterglow applies the finished PNG directly.
+See INSTALL.md, LYRICS.md, BUILD.md and VERIFICATION.md for setup, privacy,
+build instructions and the limits of the checks performed.

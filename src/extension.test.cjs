@@ -52,3 +52,14 @@ test('extension only reads YouTube Music and only contacts loopback',()=>{
   assert.deepEqual(manifest.host_permissions,['http://127.0.0.1:47836/*']);assert.deepEqual(manifest.permissions,['storage']);
   for(const script of manifest.content_scripts)assert.deepEqual(script.matches,['https://music.youtube.com/*']);
 });
+
+test('seamless playback uses the song clock, not the continuous media buffer',()=>{
+ const x=setup();x.video.currentTime=1300;x.video.duration=1540;
+ x.elements['#progress-bar']={getAttribute:n=>n==='aria-valuenow'?'43':n==='aria-valuemax'?'240':null};
+ x.send('request');assert.equal(x.events[0].state.position,43);assert.equal(x.events[0].state.duration,240);
+ x.send('command',{action:'seek',value:120});assert.equal(x.video.currentTime,1377);
+});
+test('the visible clock supplies timing if slider attributes are unavailable',()=>{
+ const x=setup();x.elements['.time-info']={textContent:' 1:02 / 4:29 '};x.send('request');
+ assert.equal(x.events[0].state.position,62);assert.equal(x.events[0].state.duration,269);
+});

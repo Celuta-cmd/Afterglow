@@ -38,6 +38,22 @@ struct ProbeResult {
   int frames = 0, errors = 0, reversals = 0;
   double meanMs = 0, p95Ms = 0, maxMs = 0, refreshHz = 0;
 };
+// One retained visual per phrase. Shared phrases are never crossfaded against
+// a second copy of themselves. All changes are submitted in one transaction.
+struct LyricInput {
+  int id, width, height, offset;
+  double y, opacity;
+};
+struct LyricGlyph {
+  int id;
+  Image image;
+  ComPtr<IDCompositionVisual> visual;
+  ComPtr<IDCompositionEffectGroup> effect;
+  double fromY = 0, toY = 0, fromOpacity = 0, toOpacity = 0;
+  LARGE_INTEGER started{};
+  double seconds = 0;
+  bool changed = false;
+};
 struct Engine {
   std::wstring probeDescription;
 
@@ -50,6 +66,9 @@ struct Engine {
   LARGE_INTEGER start{}, frequency{};
   double duration = 2;
   bool active = false;
+  bool lyricsMode = false;
+  std::vector<LyricGlyph> glyphs;
+  int lyricUploads = 0, lyricCommits = 0;
   ComPtr<IDXGIOutputDuplication> duplication;
   ComPtr<ID3D11Texture2D> probePixel;
   UINT probeX = 0, probeY = 0;
@@ -116,6 +135,7 @@ struct Engine {
     auto a = Bitmap(target.Get(), oldImage);
     auto b = Bitmap(target.Get(), newImage);
     target->BeginDraw();
+    target->Clear(D2D1::ColorF(0, 0.0f));
     auto bounds = D2D1::RectF(0, 0, float(result.width), float(result.height));
     target->DrawBitmap(a.Get(), bounds, 1,
                        D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
@@ -134,10 +154,13 @@ struct Engine {
       auto target = Target(surface.Get());
       auto bitmap = Bitmap(target.Get(), image);
       target->BeginDraw();
+      target->PushAxisAlignedClip(D2D1::RectF(float(offset.x), float(offset.y), float(offset.x + image.width), float(offset.y + image.height)), D2D1_ANTIALIAS_MODE_ALIASED);
+      target->Clear(D2D1::ColorF(0, 0.0f));
       target->DrawBitmap(bitmap.Get(),
                          D2D1::RectF(float(offset.x), float(offset.y),
                                      float(offset.x + image.width),
                                      float(offset.y + image.height)));
+      target->PopAxisAlignedClip();
       Check(target->EndDraw());
     } catch (...) {
       image.surface->EndDraw();
@@ -176,6 +199,116 @@ struct Engine {
     Replace(oldImage);
     Check(composition->WaitForCommitCompletion());
   }
+  ComPtr<IDCompositionAnimation> Motion(double from, double to, double seconds, LARGE_INTEGER begin) {
+    ComPtr<IDCompositionAnimation> animation;
+    Check(composition->CreateAnimation(&animation));
+    auto delta = to - from;
+    Check(animation->AddCubic(0, float(from), 0, float(3 * delta / (seconds * seconds)), float(-2 * delta / (seconds * seconds * seconds))));
+    Check(animation->End(seconds, float(to)));
+    Check(animation->SetAbsoluteBeginTime(begin));
+    return animation;
+  }
+  double GlyphAmount(const LyricGlyph &glyph, LONGLONG time) const {
+    if (glyph.seconds <= 0) return 1;
+    auto t = std::clamp(double(time - glyph.started.QuadPart) / double(frequency.QuadPart) / glyph.seconds, 0.0, 1.0);
+    return t * t * (3 - 2 * t);
+  }
+  void Lyrics(const LyricInput *input, int count, const BYTE *bytes, double seconds, bool reset) {
+    if (layers.size() != 1 || count < 0 || count > 3) throw E_INVALIDARG;
+    auto &layer = layers[0];
+    if (reset || !lyricsMode) {
+      Check(layer.root->RemoveAllVisuals());
+      Check(layer.root->SetEffect(nullptr)); Check(layer.root->SetOffsetY(0.0f));
+      glyphs.clear(); active = false; oldImage = {}; newImage = {};
+    }
+    lyricsMode = true;
+    // Capture the live interpolation before replacing it, including a seek
+    // during a running move. Raster images are reused until the phrase leaves.
+    const auto begin = Now();
+    for (auto it = glyphs.begin(); it != glyphs.end();) {
+      auto amount = GlyphAmount(*it, begin.QuadPart);
+      double opacity = it->fromOpacity + (it->toOpacity - it->fromOpacity) * amount;
+      bool wanted = false;
+      for (int i = 0; i < count; i++) if (input[i].id == it->id) wanted = true;
+      if (!wanted && opacity < .001) { Check(layer.root->RemoveVisual(it->visual.Get())); it = glyphs.erase(it); }
+      else ++it;
+    }
+    double shift = 0; bool matched = false;
+    for (auto &glyph : glyphs) {
+      auto amount = GlyphAmount(glyph, begin.QuadPart);
+      for (int i = 0; i < count; i++) if (input[i].id == glyph.id) {
+        if (!matched) { shift = input[i].y - (glyph.fromY + (glyph.toY - glyph.fromY) * amount); matched = true; }
+      }
+    }
+    for (auto &glyph : glyphs) {
+      const LyricInput *wanted = nullptr;
+      for (int i = 0; i < count; i++) if (input[i].id == glyph.id) wanted = &input[i];
+      glyph.changed = wanted != nullptr || glyph.toOpacity > 0;
+      // A departing phrase keeps its original fade deadline during rapid
+      // advances. New updates must not extend its lifetime indefinitely.
+      if (!glyph.changed) continue;
+      auto amount = GlyphAmount(glyph, begin.QuadPart);
+      glyph.fromY += (glyph.toY - glyph.fromY) * amount;
+      glyph.fromOpacity += (glyph.toOpacity - glyph.fromOpacity) * amount;
+      glyph.toY = wanted ? wanted->y : glyph.fromY + shift;
+      glyph.toOpacity = wanted ? wanted->opacity : 0;
+      glyph.started = begin; glyph.seconds = seconds;
+    }
+    for (int i = 0; i < count; i++) {
+      const auto &line = input[i];
+      if (line.width <= 0 || line.height <= 0 || line.offset < 0) throw E_INVALIDARG;
+      if (std::any_of(glyphs.begin(), glyphs.end(), [&](const LyricGlyph &g) { return g.id == line.id; })) continue;
+      LyricGlyph glyph{}; glyph.id = line.id;
+      glyph.image = Texture(UINT(line.width), UINT(line.height), bytes + line.offset); PublishImage(glyph.image);
+      lyricUploads++;
+      Check(composition->CreateVisual(&glyph.visual)); Check(glyph.visual->SetContent(glyph.image.surface.Get()));
+      Check(composition->CreateEffectGroup(&glyph.effect)); Check(glyph.visual->SetEffect(glyph.effect.Get()));
+      glyph.toY = line.y; glyph.fromY = line.y - shift;
+      glyph.toOpacity = line.opacity; glyph.fromOpacity = seconds > 0 ? 0 : line.opacity;
+      glyph.started = begin; glyph.seconds = seconds; glyph.changed = true;
+      Check(layer.root->AddVisual(glyph.visual.Get(), TRUE, nullptr));
+      glyphs.push_back(std::move(glyph));
+    }
+    duration = seconds; start = begin; active = seconds > 0;
+    for (auto &glyph : glyphs) {
+      if (!glyph.changed && active) continue;
+      if (active) {
+        auto move = Motion(glyph.fromY, glyph.toY, seconds, begin);
+        auto fade = Motion(glyph.fromOpacity, glyph.toOpacity, seconds, begin);
+        Check(glyph.visual->SetOffsetY(move.Get())); Check(glyph.effect->SetOpacity(fade.Get()));
+      } else {
+        Check(glyph.visual->SetOffsetY(float(glyph.toY))); Check(glyph.effect->SetOpacity(float(glyph.toOpacity)));
+      }
+    }
+    // No intermediate commit may expose new glyphs with old positions/opacity.
+    Check(composition->Commit());
+    lyricCommits++;
+    if (!active) FinishLyrics();
+  }
+  void FinishLyrics() {
+    for (auto it = glyphs.begin(); it != glyphs.end();) {
+      if (it->toOpacity == 0) { Check(layers[0].root->RemoveVisual(it->visual.Get())); it = glyphs.erase(it); }
+      else {
+        it->fromY = it->toY; it->fromOpacity = it->toOpacity;
+        it->seconds = 0;
+        Check(it->visual->SetOffsetY(float(it->toY))); Check(it->effect->SetOpacity(float(it->toOpacity))); ++it;
+      }
+    }
+    active = false; Check(composition->Commit());
+  }
+  void ComposeLyrics(Image &result) {
+    ComPtr<IDXGISurface> surface; Check(result.texture.As(&surface));
+    auto target = Target(surface.Get()); target->BeginDraw(); target->Clear(D2D1::ColorF(0, 0.0f));
+    auto time = Now().QuadPart;
+    for (const auto &glyph : glyphs) {
+      auto amount = GlyphAmount(glyph, time);
+      auto bitmap = Bitmap(target.Get(), glyph.image);
+      float y = float(glyph.fromY + (glyph.toY - glyph.fromY) * amount);
+      float opacity = float(glyph.fromOpacity + (glyph.toOpacity - glyph.fromOpacity) * amount);
+      target->DrawBitmap(bitmap.Get(), D2D1::RectF(0, y, float(glyph.image.width), y + glyph.image.height), opacity);
+    }
+    Check(target->EndDraw());
+  }
   void Begin(const BYTE *bytes, UINT width, UINT height, double seconds) {
     newImage = Texture(width, height, bytes);
     PublishImage(newImage);
@@ -199,6 +332,7 @@ struct Engine {
     active = true;
   }
   void Finish() {
+    if (lyricsMode) { FinishLyrics(); return; }
     for (auto &layer : layers) {
       Check(layer.opacity->SetOpacity(1.0f));
       Check(layer.root->RemoveVisual(layer.oldVisual.Get()));
@@ -211,6 +345,7 @@ struct Engine {
     active = false;
   }
   double Freeze() {
+    if (lyricsMode) return Amount();
     if (!active)
       return 1;
     double amount = Amount();
@@ -243,7 +378,9 @@ struct Engine {
   void Capture(BYTE *bytes, UINT width, UINT height, double &amount) {
     amount = Amount();
     Image result = Texture(width, height);
-    if (active)
+    if (lyricsMode)
+      ComposeLyrics(result);
+    else if (active)
       Compose(result, amount);
     else {
       ComPtr<IDXGISurface> surface;
@@ -251,6 +388,7 @@ struct Engine {
       auto target = Target(surface.Get());
       auto image = Bitmap(target.Get(), oldImage);
       target->BeginDraw();
+      target->Clear(D2D1::ColorF(0, 0.0f));
       target->DrawBitmap(image.Get(),
                          D2D1::RectF(0, 0, float(width), float(height)));
       Check(target->EndDraw());
@@ -482,6 +620,21 @@ EXPORT HRESULT AG_Initial(Engine *engine, const BYTE *bytes, int width,
   } catch (...) {
     return E_FAIL;
   }
+}
+EXPORT HRESULT AG_Lyrics(Engine *engine, const LyricInput *input, int count, const BYTE *bytes, double seconds, int reset) {
+  try { engine->Lyrics(input, count, bytes, seconds, reset != 0); return S_OK; }
+  catch (HRESULT hr) { return hr; } catch (...) { return E_FAIL; }
+}
+EXPORT HRESULT AG_LyricState(Engine *engine, int id, double *y, double *opacity, int *count, int *uploads, int *commits) {
+  *count = int(engine->glyphs.size()); *uploads = engine->lyricUploads; *commits = engine->lyricCommits;
+  auto time = Now().QuadPart;
+  for (const auto &glyph : engine->glyphs) if (glyph.id == id) {
+    auto amount = engine->GlyphAmount(glyph, time);
+    *y = glyph.fromY + (glyph.toY - glyph.fromY) * amount;
+    *opacity = glyph.fromOpacity + (glyph.toOpacity - glyph.fromOpacity) * amount;
+    return S_OK;
+  }
+  return E_INVALIDARG;
 }
 EXPORT HRESULT AG_Begin(Engine *engine, const BYTE *bytes, int width,
                         int height, double duration) {

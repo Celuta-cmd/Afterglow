@@ -153,7 +153,13 @@ public static class WallpaperRenderer
             var coverW=aspect>=1?coverSize:coverSize*aspect;var coverH=aspect>=1?coverSize/aspect:coverSize;
             var coverX=preset=="Gallery"?(w-coverW)/2:w*.69-coverW/2;
             var coverY=(h-coverH)/2-(preset=="Gallery"&&p.ShowInfo?105:0);
-            if(preset is not ("Immersive" or "Backdrop"))
+            if(p.ShowLyrics)
+            {
+                coverSize=Math.Min(h*(w>=h?Math.Clamp(.46*p.CoverSize/54,.25,.56):.28),w*(w>=h?.34:.65));
+                coverW=aspect>=1?coverSize:coverSize*aspect;coverH=aspect>=1?coverSize/aspect:coverSize;
+                coverX=w*(w>=h?.27:.5)-coverW/2;coverY=h*(w>=h?.43:.23)-coverH/2;
+            }
+            if(p.ShowLyrics||preset is not ("Immersive" or "Backdrop"))
             {
                 var rect=new Rect(coverX,coverY,coverW,coverH);var radius=14.0;
                 // Shadow is drawn separately; effects on a parent border rasterized and softened the cover.
@@ -165,13 +171,14 @@ public static class WallpaperRenderer
                 dc.PushClip(new RectangleGeometry(rect,radius,radius));dc.DrawImage(art,rect);dc.Pop();
                 dc.DrawRoundedRectangle(null,new Pen(new SolidColorBrush(Color.FromArgb(30,255,255,255)),.7),rect,radius,radius);
             }
-            if(p.ShowInfo&&preset!="Backdrop")
+            if(p.ShowInfo&&(p.ShowLyrics||preset!="Backdrop"))
             {
                 var x=preset=="Ambient"?w*.105:preset=="Gallery"?coverX:Math.Min(120,w*.1);
                 var y=preset=="Ambient"?h*.41:preset=="Gallery"?coverY+coverH+44:h*.70;
                 var textWidth=preset=="Ambient"?Math.Max(160,coverX-x-76):preset=="Gallery"?coverW:w-x*2;
                 var centered=preset=="Gallery";
                 var titleSize=preset=="Gallery"?38:58;
+                if(p.ShowLyrics){x=coverX;y=coverY+coverH+30;textWidth=coverW;centered=false;titleSize=32;}
                 Label(dc,"YouTube Music",16,x,y,textWidth,scale,FontWeights.Medium,Color.FromArgb(205,255,255,255),centered,1);
                 var titleHeight=Label(dc,track.Title,titleSize,x,y+35,textWidth,scale,FontWeights.SemiBold,Colors.White,centered,2);
                 var artistY=y+35+titleHeight+17;

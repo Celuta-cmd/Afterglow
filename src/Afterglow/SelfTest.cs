@@ -58,8 +58,52 @@ public static class SelfTest
         var midpoint=new byte[4];CrossfadeView.Blend(red,blue,.5).CopyPixels(midpoint,4,0);
         Check(midpoint[3]==255&&midpoint[0]>=126&&midpoint[0]<=129&&midpoint[2]>=126&&midpoint[2]<=129,"Crossfade midpoint stays opaque and mixes both colors without a black dip");
         Check(new Preferences().SmoothTransitions,"Smooth song transitions enabled by default for existing and new settings");
+        var lyrics=LyricsProvider.Parse("[offset:+250]\n[00:02.00][00:06.00]First fixture\n[00:04.500]Second fixture\n[00:08.00]\n[00:08.00]\n[00:61.00]Invalid");
+        Check(lyrics.Length==4&&lyrics[0].Time==2.25&&lyrics[1].Time==4.75&&lyrics[2].Time==6.25,"LRC fractions, multiple timestamps, offsets and invalid timestamps parsed");
+        Check(LyricsProvider.Index(lyrics,0)==-1&&LyricsProvider.Index(lyrics,4.75)==1&&LyricsProvider.Index(lyrics,3)==0,"Lyric selection handles intro, exact timestamps and backward seeks");
+        Check(lyrics[3].Text=="","Empty timed lines retain instrumental gaps");
+        Check(LyricsProvider.Parse("[00:01.00]Lead\n[00:01.00]Harmony")[0].Text=="Lead\nHarmony","Simultaneous vocals retained");
+        Check(!LyricsProvider.Matches(track,track.Title,track.Artist,245)&&!LyricsProvider.Matches(track,"Different version",track.Artist,240),"Different recording duration or title rejected");
+        Check(!Bridge.IsValid(track with{PlaybackRate=double.NaN})&&Bridge.IsValid(track with{PlaybackRate=1.5}),"Playback rates validated for lyric clock");
+        Check(!new Preferences().ShowLyrics,"Lyrics stay off for existing configurations without the new field");
+        var clock = new LyricPlaybackClock();
+        clock.Update(track with {Position=9.95}, 0); var boundary = clock.Position(.1);
+        clock.Update(track with {Position=9.98}, .1);
+        Check(clock.Position(.1)>=boundary && clock.Position(.1)>=10,"Small late bridge packets cannot move the lyric clock back across a phrase boundary");
+        clock.Update(track with {Position=2}, .2);
+        Check(clock.Position(.2)==2,"An intentional backward seek resets the lyric clock");
+        clock.Update(track with {Position=80}, .3);
+        Check(clock.Position(.3)==80,"An intentional forward seek resets the lyric clock");
+        clock.Update(track with {Position=80,Playing=false}, .4);
+        Check(clock.Position(5)==80,"Paused lyrics do not advance");
+        clock.Update(track with {Position=10,PlaybackRate=2}, 6);
+        Check(clock.Position(7)==12 && clock.Position(20)==15,"Playback rate is respected and stale interpolation is capped");
+        clock.Update(track with {Title="New fixture song",Position=0}, 21);
+        Check(clock.Position(21)==0,"A new song resets the clock even when old playback was ahead");
+        foreach(var size in new[]{(1920,1080),(1080,1920),(3440,1440)})
+        {
+            var lyricFrame=WallpaperRenderer.Render(demo,track,new Preferences{ShowLyrics=true},size.Item1,size.Item2);
+            Check(lyricFrame.PixelWidth==size.Item1&&lyricFrame.PixelHeight==size.Item2,"Lyrics layout renders at "+size);
+            WallpaperRenderer.Save(lyricFrame,Path.Combine(Path.GetDirectoryName(reportPath)!,"lyrics-"+size.Item1+".png"));
+        }
+        var lyricView=new LyricsView();lyricView.Update(new[]{new LyricLine(0,"A long original phrase that continues onto several lines without losing any of its words to an ellipsis")},0,false);
+        lyricView.Measure(new System.Windows.Size(486,518));lyricView.Arrange(new System.Windows.Rect(0,0,486,518));lyricView.UpdateLayout();
+        Check(lyricView.ActiveTextFits&&lyricView.ActiveHeight>80,"Long active lyric wraps fully without ellipsis or clipping");
+        foreach(var style in new[]{"Ambient","Gallery"})
+        {
+            var lyricMode=WallpaperRenderer.Render(demo,track,new Preferences{Preset=style,ShowLyrics=true},1920,1080);
+            Check(lyricMode.PixelWidth==1920,"Live lyric layout is available in "+style);
+        }
+        Check(Bridge.IsFresh(track with{Playing=false},DateTime.UtcNow.AddSeconds(-60),DateTime.UtcNow)&&!Bridge.IsFresh(track,DateTime.UtcNow.AddSeconds(-9),DateTime.UtcNow),"Paused browser timer throttling keeps the source available without extending the playing clock");
+        Check(!new Preferences().SetupGuideSeen&&!new Preferences().SetupCompleted,"Fresh installation gets first-run setup");
+        var setupRoot=Path.Combine(Path.GetDirectoryName(reportPath)!,"setup-fixture");Directory.CreateDirectory(setupRoot);
+        var legacy=new Preferences{SetupGuideSeen=true};var oldNode=System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(legacy,Preferences.Json))!;oldNode.AsObject().Remove("setupGuideSeen");File.WriteAllText(Path.Combine(setupRoot,"settings.json"),oldNode.ToJsonString());
+        Check(Preferences.Load(setupRoot).SetupGuideSeen,"Existing settings migrate without forcing onboarding after an upgrade");
+        var shipped=Path.Combine(setupRoot,"shipped");Directory.CreateDirectory(shipped);File.WriteAllText(Path.Combine(shipped,"manifest.json"),"{}");File.WriteAllText(Path.Combine(shipped,"pairing.js"),"globalThis.AFTERGLOW_SETUP_TOKEN = \"\";");
+        var prepared=BrowserSetup.PrepareExtension(new Preferences{Token=new string('A',48)},shipped,Path.Combine(setupRoot,"private"));
+        Check(File.ReadAllText(Path.Combine(prepared,"pairing.js")).Contains(new string('A',48))&&!File.ReadAllText(Path.Combine(shipped,"pairing.js")).Contains(new string('A',48)),"Pre-pairing changes only the separate private extension copy");
         var preferenceFolder=Path.Combine(Path.GetDirectoryName(reportPath)!,"configuration-fixture");
-        var saved=new Preferences{Preset="Backdrop",Blur=73,Darkness=11,CoverSize=61,ShowInfo=false,AutoApply=true,SmoothTransitions=false,Widget=true,RestoreOnExit=false,Resolution="4K",Theme="Dark",StudioLeft=80,StudioTop=90,StudioWidth=1500,StudioHeight=900,StudioMaximized=true,ControllerLeft=400,ControllerTop=500,ControllerPinned=true};
+        var saved=new Preferences{SetupGuideSeen=true,SetupCompleted=true,SetupBrowserName="Google Chrome",SelectedSection="Lyrics",SidebarCollapsed=true,AppliedLyricsKey="fixture",ShowLyrics=true,LyricsOffset=1.25,Preset="Backdrop",Blur=73,Darkness=11,CoverSize=61,ShowInfo=false,AutoApply=true,SmoothTransitions=false,Widget=true,RestoreOnExit=false,Resolution="4K",Theme="Dark",StudioLeft=80,StudioTop=90,StudioWidth=1500,StudioHeight=900,StudioMaximized=true,ControllerLeft=400,ControllerTop=500,ControllerPinned=true};
         saved.Save(preferenceFolder);var reloaded=Preferences.Load(preferenceFolder);
         Check(JsonSerializer.Serialize(saved,Preferences.Json)==JsonSerializer.Serialize(reloaded,Preferences.Json),"All appearance, automation, theme, window and mini-player preferences survive a new load");
         saved.Save(preferenceFolder);File.WriteAllText(Path.Combine(preferenceFolder,"settings.json"),"broken JSON");
@@ -73,8 +117,10 @@ public static class SelfTest
         await using var bridge=new Bridge(p.Token);await bridge.StartAsync(47837);
         using var client=new HttpClient{BaseAddress=new Uri("http://127.0.0.1:47837")};
         Check((await client.GetAsync("/health")).StatusCode==HttpStatusCode.Unauthorized,"Unauthenticated requests rejected");
+        Check(bridge.LastPairingSeen==DateTime.MinValue,"Unauthenticated requests cannot advance the setup guide");
         client.DefaultRequestHeaders.Add("X-Afterglow-Token",p.Token);
         Check((await client.GetAsync("/health")).IsSuccessStatusCode,"Pairing key authenticates");
+        Check(bridge.LastPairingSeen>DateTime.UtcNow.AddSeconds(-5)&&!bridge.Connected,"Pairing health check is distinct from a real music connection");
         Check((await client.PostAsJsonAsync("/state",track,Preferences.Json)).IsSuccessStatusCode,"Playing state accepted");
         Check(bridge.Connected&&bridge.Current.Title==track.Title,"Now playing state updated");
         Check(bridge.Send("next"),"Playback command enqueued");

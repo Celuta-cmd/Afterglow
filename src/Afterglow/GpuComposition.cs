@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -30,8 +31,36 @@ internal sealed class GpuComposition : IDisposable
     internal GpuComposition(IntPtr[] windows,int[] widths,int[] heights)=>Check(Create(windows,widths,heights,windows.Length,out engine));
     internal double Progress=>GetProgress(engine);
     internal void Initial(BitmapSource image)=>Check(InitialImage(engine,Pixels(image),image.PixelWidth,image.PixelHeight));
+    internal void Lyrics(LyricPlacement[] scene, int width, bool animate, bool reset)
+    {
+        if (reset) lyricImages.Clear();
+        var descriptors = new LyricInput[scene.Length];
+        using var pixels = new MemoryStream();
+        for (int i = 0; i < scene.Length; i++)
+        {
+            var p = scene[i];
+            // Glyph images contain no panel mask or opacity.
+            var height = Math.Max(1, (int)Math.Ceiling(p.Height));
+            if (!lyricImages.TryGetValue(p.Id, out var bitmap))
+            {
+                var label = LyricLayout.Label(p.Text, width, p.FontSize);
+                label.Measure(new System.Windows.Size(width, double.PositiveInfinity));
+                label.Arrange(new System.Windows.Rect(0, 0, width, height));
+                var raster = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+                raster.Render(label); raster.Freeze(); bitmap = raster; lyricImages.Add(p.Id, bitmap);
+            }
+            descriptors[i] = new() { Id = p.Id, Width = width, Height = height, Offset = checked((int)pixels.Length), Y = p.Y, Opacity = p.Opacity };
+            pixels.Write(Pixels(bitmap));
+        }
+        Check(PresentLyrics(engine, descriptors, descriptors.Length, pixels.ToArray(), animate ? LyricsView.TransitionDuration.TotalSeconds : 0, reset ? 1 : 0));
+        var wanted = new HashSet<int>(); foreach (var p in scene) wanted.Add(p.Id);
+        foreach (var id in new List<int>(lyricImages.Keys)) if (!wanted.Contains(id)) lyricImages.Remove(id);
+    }
+    private readonly Dictionary<int, BitmapSource> lyricImages = new();
     internal void Begin(BitmapSource image)=>Check(BeginFade(engine,Pixels(image),image.PixelWidth,image.PixelHeight,CrossfadeView.Duration.TotalSeconds));
     internal void Finish()=>Check(FinishFade(engine));
+    internal (double Y, double Opacity, int Count, int Uploads, int Commits) LyricState(int id)
+    { Check(GetLyricState(engine,id,out var y,out var opacity,out var count,out var uploads,out var commits)); return(y,opacity,count,uploads,commits); }
     internal double Freeze(){Check(FreezeFade(engine,out var amount));return amount;}
     internal (BitmapSource frame,double amount) Capture(int width,int height)
     {
@@ -51,6 +80,9 @@ internal sealed class GpuComposition : IDisposable
     public void Dispose(){if(engine!=IntPtr.Zero){Destroy(engine);engine=IntPtr.Zero;}}
     [StructLayout(LayoutKind.Sequential)] internal struct ProbeResult
     {public int Frames,Errors,Reversals;public double MeanMs,P95Ms,MaxMs,RefreshHz;}
+    [StructLayout(LayoutKind.Sequential)] private struct LyricInput { public int Id, Width, Height, Offset; public double Y, Opacity; }
+    [DllImport("Afterglow.Composition",EntryPoint="AG_Lyrics",CallingConvention=CallingConvention.Cdecl)]private static extern int PresentLyrics(IntPtr engine,LyricInput[] input,int count,byte[] pixels,double seconds,int reset);
+    [DllImport("Afterglow.Composition",EntryPoint="AG_LyricState",CallingConvention=CallingConvention.Cdecl)]private static extern int GetLyricState(IntPtr engine,int id,out double y,out double opacity,out int count,out int uploads,out int commits);
     [DllImport("Afterglow.Composition",EntryPoint="AG_Create",CallingConvention=CallingConvention.Cdecl)]private static extern int Create(IntPtr[] windows,int[] widths,int[] heights,int count,out IntPtr engine);
     [DllImport("Afterglow.Composition",EntryPoint="AG_Initial",CallingConvention=CallingConvention.Cdecl)]private static extern int InitialImage(IntPtr engine,byte[] pixels,int width,int height);
     [DllImport("Afterglow.Composition",EntryPoint="AG_Begin",CallingConvention=CallingConvention.Cdecl)]private static extern int BeginFade(IntPtr engine,byte[] pixels,int width,int height,double duration);

@@ -21,7 +21,9 @@ public sealed class Bridge : IAsyncDisposable
     private long sequence;
     public Track Current { get; private set; } = new();
     public DateTime LastSeen { get; private set; } = DateTime.MinValue;
-    public bool Connected => DateTime.UtcNow - LastSeen < TimeSpan.FromSeconds(8);
+    public DateTime LastPairingSeen { get; private set; } = DateTime.MinValue;
+    internal static bool IsFresh(Track track,DateTime lastSeen,DateTime now)=>now-lastSeen<TimeSpan.FromSeconds(track.Playing?8:75);
+    public bool Connected => IsFresh(Current,LastSeen,DateTime.UtcNow);
     public event Action<Track>? TrackChanged;
     public Bridge(string token) { this.token = token; }
     public async Task StartAsync(int port = 47836)
@@ -37,7 +39,7 @@ public sealed class Bridge : IAsyncDisposable
             { context.Response.StatusCode = 401; return; }
             await next(context);
         });
-        server.MapGet("/health", () => Results.Json(new { name = "Afterglow", version = 1 }));
+        server.MapGet("/health", () => {LastPairingSeen=DateTime.UtcNow;return Results.Json(new { name = "Afterglow", version = 1, source = Current.Source, position = Current.Position, duration = Current.Duration });});
         server.MapPost("/state", async (HttpContext context) =>
         {
             Track? input;
@@ -61,7 +63,7 @@ public sealed class Bridge : IAsyncDisposable
     }
     public static bool IsValid(Track t) => t.Source is { Length: > 0 and < 100 } && t.Title is { Length: <= 500 } && t.Artist is { Length: <= 500 } && t.Album is { Length: <= 500 } && t.Artwork is { Length: <= 2048 } &&
         Uri.TryCreate(t.Url, UriKind.Absolute, out var uri) && uri.Scheme == "https" && uri.Host == "music.youtube.com" &&
-        (t.Artwork == "" || IsArtworkUrl(t.Artwork)) && double.IsFinite(t.Position) && double.IsFinite(t.Duration) && t.Position >= 0 && t.Duration >= 0 && t.Duration < 604800;
+        (t.Artwork == "" || IsArtworkUrl(t.Artwork)) && double.IsFinite(t.Position) && double.IsFinite(t.Duration) && t.Position >= 0 && t.Duration >= 0 && t.Duration < 604800 && double.IsFinite(t.PlaybackRate) && t.PlaybackRate > 0 && t.PlaybackRate <= 16;
     public static bool IsArtworkUrl(string url) => Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Scheme == "https" &&
         (u.Host == "lh3.googleusercontent.com" || u.Host == "yt3.googleusercontent.com" || u.Host == "i.ytimg.com" || u.Host.EndsWith(".ytimg.com", StringComparison.Ordinal) || u.Host.EndsWith(".ggpht.com", StringComparison.Ordinal));
     public bool Send(string action, double value = 0)

@@ -1,0 +1,175 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="Afterglow" Manufacturer="Afterglow contributors" Version="$(var.ProductVersion)" UpgradeCode="018E9D01-E203-4E8F-8F95-CA7B687199AA" Scope="perUser" InstallerVersion="500" Compressed="yes">
+    <MajorUpgrade Schedule="afterInstallInitialize" DowngradeErrorMessage="A newer version of Afterglow is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Property Id="ARPPRODUCTICON" Value="AfterglowIcon" />
+    <Property Id="SAVEDINSTALLFOLDER" Secure="yes">
+      <RegistrySearch Id="RememberInstallLocation" Root="HKCU" Key="Software\Afterglow\Installer" Name="InstallPath" Type="raw" Bitness="always64" />
+    </Property>
+    <SetProperty Id="INSTALLFOLDER" Value="[SAVEDINSTALLFOLDER]" Before="CostFinalize" Sequence="both" Condition="SAVEDINSTALLFOLDER AND NOT INSTALLFOLDER" />
+    <Icon Id="AfterglowIcon" SourceFile="$(var.ProjectDir)/src/Afterglow/afterglow.ico" />
+    <Property Id="WINDOWSBUILD">
+      <RegistrySearch Id="WindowsBuild" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion" Name="CurrentBuildNumber" Type="raw" Bitness="always64" />
+    </Property>
+    <Launch Condition="Installed OR (VersionNT64 AND WINDOWSBUILD &gt;= 17763)" Message="Afterglow requires 64-bit Windows 10 version 1809 or later." />
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="UserPrograms" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="Afterglow">
+          <Component Id="C355da78b47f6dbd17d" Guid="08ea3b87-c1e5-5852-ba1f-edc408f9a1b2" Bitness="always64">
+            <File Id="AfterglowExe" Source="$(var.PayloadDir)/Afterglow.exe" Name="Afterglow.exe" />
+            <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="C355da78b47f6dbd17d" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+          </Component>
+          <Component Id="Cb43f25d47187a01e82" Guid="09d56024-fff2-5d05-bd5c-1d177058033d" Bitness="always64">
+            <File Id="Fb43f25d47187a01e82" Source="$(var.PayloadDir)/DEMO.txt" Name="DEMO.txt" />
+            <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="Cb43f25d47187a01e82" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+          </Component>
+          <Directory Id="D26f1de33979d065ba8" Name="extension">
+            <Component Id="Cbdb5cae59928803bd7" Guid="627f595b-e6ac-57c2-9ab3-99d1662711c0" Bitness="always64">
+              <File Id="Fbdb5cae59928803bd7" Source="$(var.PayloadDir)/extension/background.js" Name="background.js" />
+              <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="Cbdb5cae59928803bd7" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+            </Component>
+            <Component Id="Cfdf8b5debf9c89396c" Guid="84c655a5-4886-59fa-88e8-8ce13cfbd855" Bitness="always64">
+              <File Id="Ffdf8b5debf9c89396c" Source="$(var.PayloadDir)/extension/content.js" Name="content.js" />
+              <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="Cfdf8b5debf9c89396c" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+            </Component>
+            <Component Id="C1929f2f40162baf33d" Guid="a5a38fd4-397a-52b1-b9d9-e64635f9a0e7" Bitness="always64">
+              <File Id="F1929f2f40162baf33d" Source="$(var.PayloadDir)/extension/manifest.json" Name="manifest.json" />
+              <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="C1929f2f40162baf33d" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+            </Component>
+            <Component Id="C5d5670843095bee0dc" Guid="b2dde100-55cc-5623-8151-8b786a3e26e1" Bitness="always64">
+              <File Id="F5d5670843095bee0dc" Source="$(var.PayloadDir)/extension/options.css" Name="options.css" />
+              <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="C5d5670843095bee0dc" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+            </Component>
+            <Component Id="Cb0e1a5a50f93343e72" Guid="c0329c10-78c5-5494-8aef-28d4e5765bac" Bitness="always64">
+              <File Id="Fb0e1a5a50f93343e72" Source="$(var.PayloadDir)/extension/options.html" Name="options.html" />
+              <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="Cb0e1a5a50f93343e72" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+            </Component>
+            <Component Id="Ccb05fb1f19a6bc030f" Guid="2db0e195-66f3-5380-8070-3827bf875acf" Bitness="always64">
+              <File Id="Fcb05fb1f19a6bc030f" Source="$(var.PayloadDir)/extension/options.js" Name="options.js" />
+              <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="Ccb05fb1f19a6bc030f" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+            </Component>
+            <Component Id="C19205e2b296eeb5f75" Guid="40e5218e-8927-5847-87bf-22ec36551a76" Bitness="always64">
+              <File Id="F19205e2b296eeb5f75" Source="$(var.PayloadDir)/extension/page.js" Name="page.js" />
+              <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="C19205e2b296eeb5f75" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+            </Component>
+            <Component Id="C40a6c4f544b19e6267" Guid="1925825b-2841-506c-bd16-3527d127b928" Bitness="always64">
+              <File Id="F40a6c4f544b19e6267" Source="$(var.PayloadDir)/extension/pairing.js" Name="pairing.js" />
+              <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="C40a6c4f544b19e6267" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+            </Component>
+          </Directory>
+          <Component Id="C09b140a43ebfdd8dbe" Guid="28bf5e21-6eb3-5454-acd7-6ea82291b0a9" Bitness="always64">
+            <File Id="F09b140a43ebfdd8dbe" Source="$(var.PayloadDir)/INSTALL.md" Name="INSTALL.md" />
+            <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="C09b140a43ebfdd8dbe" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+          </Component>
+          <Component Id="Cc693279643b8cd5d24" Guid="881d28d7-beac-5f8d-9aa9-40bbe95a8647" Bitness="always64">
+            <File Id="Fc693279643b8cd5d24" Source="$(var.PayloadDir)/LICENSE" Name="LICENSE" />
+            <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="Cc693279643b8cd5d24" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+          </Component>
+          <Component Id="Cf394ed6ed9e76b029a" Guid="49354c65-6e58-554e-ba43-1bf6bfd45139" Bitness="always64">
+            <File Id="Ff394ed6ed9e76b029a" Source="$(var.PayloadDir)/LYRICS.md" Name="LYRICS.md" />
+            <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="Cf394ed6ed9e76b029a" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+          </Component>
+          <Component Id="Cb335630551682c19a7" Guid="7a97589a-234a-5321-a6ee-2c5b969a0abb" Bitness="always64">
+            <File Id="Fb335630551682c19a7" Source="$(var.PayloadDir)/README.md" Name="README.md" />
+            <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="Cb335630551682c19a7" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+          </Component>
+          <Component Id="Cae39ec974590de394d" Guid="3c6de4a7-dd06-5c9c-a0b9-06706ae6f7d4" Bitness="always64">
+            <File Id="Fae39ec974590de394d" Source="$(var.PayloadDir)/REDESIGN.md" Name="REDESIGN.md" />
+            <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="Cae39ec974590de394d" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+          </Component>
+          <Component Id="C2406f08f94232561e1" Guid="7be3e5c6-8dfa-537e-b3a2-71192cc5739b" Bitness="always64">
+            <File Id="F2406f08f94232561e1" Source="$(var.PayloadDir)/RESEARCH.md" Name="RESEARCH.md" />
+            <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="C2406f08f94232561e1" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+          </Component>
+          <Directory Id="Dd3fa2adc37ff95ea54" Name="third-party">
+            <Component Id="C9fec160e834aaacfe4" Guid="5fa79d89-7088-585a-a67c-abf57a5fddbf" Bitness="always64">
+              <File Id="F9fec160e834aaacfe4" Source="$(var.PayloadDir)/third-party/aspnetcore-NOTICES.txt" Name="aspnetcore-NOTICES.txt" />
+              <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="C9fec160e834aaacfe4" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+            </Component>
+            <Component Id="C2cee9466e396c8c862" Guid="58543a4a-7507-5e6b-8960-ec1b7c4b5db8" Bitness="always64">
+              <File Id="F2cee9466e396c8c862" Source="$(var.PayloadDir)/third-party/dotnet-LICENSE.txt" Name="dotnet-LICENSE.txt" />
+              <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="C2cee9466e396c8c862" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+            </Component>
+            <Component Id="C2c9e62f9a50cf6f75a" Guid="dccc7a7b-dc21-5a45-a9c9-3984db940623" Bitness="always64">
+              <File Id="F2c9e62f9a50cf6f75a" Source="$(var.PayloadDir)/third-party/dotnet-NOTICES.txt" Name="dotnet-NOTICES.txt" />
+              <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="C2c9e62f9a50cf6f75a" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+            </Component>
+            <Component Id="Cba316374a7816cb144" Guid="15cc751b-ebc5-5d5c-86cc-1e3a05b97fd2" Bitness="always64">
+              <File Id="Fba316374a7816cb144" Source="$(var.PayloadDir)/third-party/windowsdesktop-LICENSE.txt" Name="windowsdesktop-LICENSE.txt" />
+              <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="Cba316374a7816cb144" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+            </Component>
+          </Directory>
+          <Component Id="Cd6cf5c10d83511fcfa" Guid="e37ab6e0-8776-56c9-a621-bcb17154cfb5" Bitness="always64">
+            <File Id="Fd6cf5c10d83511fcfa" Source="$(var.PayloadDir)/VERIFICATION.md" Name="VERIFICATION.md" />
+            <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="Cd6cf5c10d83511fcfa" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="AfterglowMenu" Name="Afterglow" />
+    </StandardDirectory>
+    <StandardDirectory Id="DesktopFolder" />
+    <Feature Id="Core" Title="Afterglow" Level="1">
+      <ComponentRef Id="C355da78b47f6dbd17d" />
+      <ComponentRef Id="Cb43f25d47187a01e82" />
+      <ComponentRef Id="Cbdb5cae59928803bd7" />
+      <ComponentRef Id="Cfdf8b5debf9c89396c" />
+      <ComponentRef Id="C1929f2f40162baf33d" />
+      <ComponentRef Id="C5d5670843095bee0dc" />
+      <ComponentRef Id="Cb0e1a5a50f93343e72" />
+      <ComponentRef Id="Ccb05fb1f19a6bc030f" />
+      <ComponentRef Id="C19205e2b296eeb5f75" />
+      <ComponentRef Id="C40a6c4f544b19e6267" />
+      <ComponentRef Id="C09b140a43ebfdd8dbe" />
+      <ComponentRef Id="Cc693279643b8cd5d24" />
+      <ComponentRef Id="Cf394ed6ed9e76b029a" />
+      <ComponentRef Id="Cb335630551682c19a7" />
+      <ComponentRef Id="Cae39ec974590de394d" />
+      <ComponentRef Id="C2406f08f94232561e1" />
+      <ComponentRef Id="C9fec160e834aaacfe4" />
+      <ComponentRef Id="C2cee9466e396c8c862" />
+      <ComponentRef Id="C2c9e62f9a50cf6f75a" />
+      <ComponentRef Id="Cba316374a7816cb144" />
+      <ComponentRef Id="Cd6cf5c10d83511fcfa" />
+      <ComponentRef Id="DirectoryCleanup" />
+      <ComponentRef Id="MenuShortcut" />
+    </Feature>
+    <Feature Id="DesktopShortcutFeature" Title="Desktop shortcut" Level="1">
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+    <Component Id="DirectoryCleanup" Guid="5c0b7977-8960-5b24-a14d-471c8861fb18" Directory="INSTALLFOLDER">
+      <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="Directories" Value="1" Type="integer" KeyPath="yes" />
+      <RemoveFolder Id="CleanDirectory0" Directory="INSTALLFOLDER" On="uninstall" />
+      <RemoveFolder Id="CleanDirectory1" Directory="D26f1de33979d065ba8" On="uninstall" />
+      <RemoveFolder Id="CleanDirectory2" Directory="Dd3fa2adc37ff95ea54" On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="InstallPath" Value="[INSTALLFOLDER]" Type="string" />
+    </Component>
+    <Component Id="MenuShortcut" Guid="*" Directory="AfterglowMenu">
+      <Shortcut Id="MenuShortcutLink" Name="Afterglow" Target="[#AfterglowExe]" WorkingDirectory="INSTALLFOLDER" Icon="AfterglowIcon" Description="YouTube Music wallpapers and synced lyrics" />
+      <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="MenuShortcut" Value="1" Type="integer" KeyPath="yes" />
+      <RemoveFolder Id="RemoveMenu" On="uninstall" />
+    </Component>
+    <Component Id="DesktopShortcut" Guid="*" Directory="DesktopFolder">
+      <Shortcut Id="DesktopShortcutLink" Name="Afterglow Studio" Target="[#AfterglowExe]" WorkingDirectory="INSTALLFOLDER" Icon="AfterglowIcon" Description="YouTube Music wallpapers and synced lyrics" />
+      <RegistryValue Root="HKCU" Key="Software\Afterglow\Installer" Name="DesktopShortcut" Value="1" Type="integer" KeyPath="yes" />
+    </Component>
+    <CustomAction Id="CleanupAfterglow" FileRef="AfterglowExe" ExeCommand="--installer-cleanup" Execute="immediate" Return="ignore" Impersonate="yes" />
+    <CustomAction Id="ExitForUpgrade" FileRef="AfterglowExe" ExeCommand="--request-exit" Execute="immediate" Return="ignore" Impersonate="yes" />
+    <InstallExecuteSequence>
+      <Custom Action="CleanupAfterglow" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+      <Custom Action="ExitForUpgrade" Before="CleanupAfterglow" Condition="REMOVE=&quot;ALL&quot; AND UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Open Afterglow and set up your browser" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <CustomAction Id="LaunchAfterglow" FileRef="AfterglowExe" ExeCommand="" Execute="immediate" Return="asyncNoWait" Impersonate="yes" />
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchAfterglow" Order="1" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
+    </UI>
+    <WixVariable Id="WixUIBannerBmp" Value="$(var.ProjectDir)/installer/banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(var.ProjectDir)/installer/dialog.bmp" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.ProjectDir)/installer/license.rtf" />
+  </Package>
+</Wix>
